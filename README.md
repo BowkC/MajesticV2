@@ -32,4 +32,4 @@ Initial public release intended before 2.5
 
 ## License
 
-This project is licensed under the CC BY-NC-ND 4.0 License (https://creativecommons.org/licenses/by-nc-nd/4.0/deed.en) - see the LICENSE.md file for details
+This project is licensed under the CC BY-NC-ND 4.0 License (https://creativecommons.org/licenses/by-nc-nd/4.0/deed.en) - see the LICENSE.md file for details about this non-standard license. I chose this license for maximum strictness, protecting my work while allowing it to be showcased.
