@@ -1,13 +1,14 @@
 import { Client, GatewayIntentBits, Partials, Collection } from 'discord.js';
 import { Db as DbConnection } from 'mongodb';
 import { clearCache } from './handlers/botCache';
-import { Config, configPromise } from './config.js';
+import { logError } from './handlers/helperFunctions';
+import { Config, initialiseConfig, getConfig } from './config.js';
 import cron from 'node-cron';
 import { promises as fs } from 'fs';
 import { exec } from 'child_process';
 
 // Extend Discord.js Client with Custom Properties
-class CustomClient extends Client {
+export class CustomClient extends Client {
   commands: Collection<string, any>;
   aliases: Collection<string, string>;
   slashCommands: Collection<string, any>;
@@ -39,14 +40,16 @@ class CustomClient extends Client {
 
 // Main Function
 async function main() {
-  const config: Config = await configPromise;
+  await initialiseConfig();
+  const config: Config = getConfig();
+
   const cNames = config.collectionNames;
   const db = config.db;
 
   const client = new CustomClient();
 
   // Load Handlers
-  ["commandUtility", "botCache", "events", "slashCommands", "antiCrash"].forEach(async (handler) => {
+  ["events", "command", "antiCrash"].forEach(async (handler) => {
     const module = await import(`./handlers/${handler}`);
     module.default(client);
   });
@@ -60,7 +63,7 @@ async function main() {
 
     exec("tar -czvf files.tar.gz ../src", async (error, stdout) => {
       if (error) {
-        return console.error('Error creating backup:', error);
+        return logError(client, 'Error creating backup: \n' + error);
       }
 
       const channel = client.channels.cache.get(config.backupChannel);
@@ -75,7 +78,7 @@ async function main() {
     });
   });
 
-  // Post data to topGG if applicable
+  // Post data to topGG [if applicable]
   if (config.topGG && client.user) {
     const topGGPost = await fetch(`https://top.gg/api/bots/${client.user.id}/stats`, {
       method: 'POST',
@@ -85,7 +88,7 @@ async function main() {
     })
 
     if (topGGPost.status !== 200) {
-      console.error('Error posting to topGG:', await topGGPost.json());
+      logError(client, 'Error posting to topGG: \n' + await topGGPost.json());
     }
   }
 
