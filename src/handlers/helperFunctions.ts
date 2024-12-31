@@ -1,5 +1,6 @@
-import { Client } from 'discord.js';
+import { CustomClient } from '../index'
 import { getConfig } from '../config';
+import { EmbedBuilder, resolveColor } from 'discord.js';
 
 /**
  * Synchronous function to handle errors
@@ -8,7 +9,7 @@ import { getConfig } from '../config';
  * @param client the client to log the error through
  * @param error the error to log
  */
-export function logError(client: Client, error: String) {
+export function logError(client: CustomClient, error: String) {
   const config = getConfig();
 
   try {
@@ -33,4 +34,28 @@ export function logError(client: Client, error: String) {
     console.error("Error logging error: ", e);
     console.error("Error being logged: ", error)
   }
+}
+
+export function errorEmbed(message: string, prefix: string) {
+  const config = getConfig();
+  const options = config.embedStructure;
+
+  const errorEmbed = new EmbedBuilder()
+    .setColor(options.errorColour)
+    .setTitle('Uh oh! :x:')
+    .setDescription(message)
+    .setFooter({ text: `Prefix ${prefix}`, iconURL: options.footerIcon })
+    .setTimestamp();
+  return errorEmbed;
+}
+
+export function applyEmbedStructure(embed: EmbedBuilder, prefix: string) {
+  const config = getConfig();
+  const options = config.embedStructure;
+
+  // Apply the colour, footer, and timestamp to the embed
+  const newEmbed = embed.setColor(options.colour)
+    .setFooter({ text: `Prefix ${prefix}`, iconURL: options.footerIcon })
+    .setTimestamp();
+  return newEmbed
 }

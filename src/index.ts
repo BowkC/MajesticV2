@@ -11,7 +11,6 @@ import { exec } from 'child_process';
 export class CustomClient extends Client {
   commands: Collection<string, any>;
   aliases: Collection<string, string>;
-  slashCommands: Collection<string, any>;
   categories: string[];
   cooldowns: Collection<string, number>;
 
@@ -32,7 +31,6 @@ export class CustomClient extends Client {
 
     this.commands = new Collection();
     this.aliases = new Collection();
-    this.slashCommands = new Collection();
     this.categories = [];
     this.cooldowns = new Collection();
   }
