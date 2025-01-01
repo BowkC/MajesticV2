@@ -1,8 +1,9 @@
 import { Collection, CommandInteraction, Message, SlashCommandBuilder, SlashCommandOptionsOnlyBuilder } from 'discord.js';
 import path from 'path';
-import { readdirSync, lstatSync } from 'fs';
+import { promises as fsPromises } from 'fs';
 import { CustomClient } from '../index';
 import { getConfig } from '../config';
+const { readdir, lstat } = fsPromises;
 
 interface Command {
     name: string;
@@ -10,96 +11,146 @@ interface Command {
     description: string;
     cooldown?: number;
     aliases?: string[];
-    options?: Array<{ [key: string]: { name: string; description: string; required?: boolean } }>;
-    execute: (client: CustomClient, args: string[], interaction: Message | CommandInteraction) => void;
+    options?: Array<{ [optionType: keyof OptionBuilderMapping]: { name: string; description: string; required?: boolean } }>;
+    textExtract?: (messageInteraction: Message) => object;
+    slashExtract?: (commandInteraction: CommandInteraction) => object;
+    execute: (clientInstance: CustomClient, interactionObject: Message | CommandInteraction, commandPrefix: string, optionData?: object) => void;
 }
 
-export default async function loadCommands(client: CustomClient) {
-    try {
-        const loadSlashGlobal = getConfig().slashGlobal || false;
-        
-        const commandsPath = path.resolve(__dirname, '../commands');
-        const slashCommands: SlashCommandBuilder[] = [];
+function buildSlashCommand(commandDetails: Command, categoryName: string): SlashCommandBuilder {
+    const slashCommandBuilder = new SlashCommandBuilder()
+        .setName(categoryName.toLowerCase())
+        .setDescription(`${categoryName} commands`);
 
-        client.commands = new Collection<string, Command>();
-        client.aliases = new Collection<string, string>();
+    // Add the individual command as a subcommand to the category
+    slashCommandBuilder.addSubcommand((subcommandBuilder) => {
+        subcommandBuilder.setName(commandDetails.name.toLowerCase())
+            .setDescription(commandDetails.description);
 
-        const commandDirs = readdirSync(commandsPath);
-
-        for (const dir of commandDirs) {
-            const commandPath = `${commandsPath}/${dir}`;
-
-            if (lstatSync(commandPath).isDirectory()) {
-                const commandFiles = readdirSync(commandPath).filter((file) => file.endsWith('.js') || file.endsWith('.ts'));
-
-                for (const file of commandFiles) {
-                    try {
-                        const { default: command } = await import(`${commandPath}/${file}`);
-                        if (!validateCommand(command)) {
-                            console.warn(`Invalid command structure in file: ${file}`);
-                            continue;
-                        }
-
-                        client.commands.set(command.name, command);
-                        if (command.aliases) {
-                            command.aliases.forEach((alias: string) => client.aliases.set(alias, command.name));
-                        }
-
-                        const slashCommand = buildSlashCommand(command);
-                        slashCommands.push(slashCommand);
-                    } catch (error) {
-                        console.error(`Error loading command from file "${file}": ${error}`);
-                    }
+        if (commandDetails.options) {
+            for (const commandOption of commandDetails.options) {
+                const [optionType, optionDetails] = Object.entries(commandOption)[0];
+                const optionBuilder = optionBuilderMapping[optionType.toLowerCase()];
+                if (optionBuilder) {
+                    optionBuilder(subcommandBuilder as unknown as SlashCommandOptionsOnlyBuilder, optionDetails);
+                } else {
+                    console.warn(`Unknown option type "${optionType}" in command "${commandDetails.name}".`);
                 }
             }
         }
 
-        client.on('ready', async () => {
+        return subcommandBuilder;
+    });
+
+    return slashCommandBuilder;
+}
+
+export default async function loadCommands(customClientInstance: CustomClient) {
+    try {
+        const enableGlobalSlashCommands = getConfig().slashGlobal || false;
+
+        const commandsDirectoryPath = path.resolve(__dirname, '../commands');
+        const slashCommandsMap: Map<string, SlashCommandBuilder> = new Map();
+
+        customClientInstance.commands = new Collection<string, Command>();
+        customClientInstance.aliases = new Collection<string, string>();
+
+        const commandDirectories = await readdir(commandsDirectoryPath);
+
+        const categoryProcessing = commandDirectories.map(async (commandDirectoryName) => {
+            const commandDirectoryPath = `${commandsDirectoryPath}/${commandDirectoryName}`;
+
+            if ((await lstat(commandDirectoryPath)).isDirectory()) {
+                const categoryName = commandDirectoryName;
+                const categoryCommands: Command[] = [];
+
+                const commandFiles = (await readdir(commandDirectoryPath)).filter(
+                    (fileName) => fileName.endsWith('.js') || fileName.endsWith('.ts')
+                );
+
+                const fileProcessing = commandFiles.map(async (commandFileName) => {
+                    try {
+                        const { default: commandDefinition } = await import(`${commandDirectoryPath}/${commandFileName}`);
+                        if (!validateCommandStructure(commandDefinition)) {
+                            console.warn(`Invalid command structure in file: ${commandFileName}`);
+                            return;
+                        }
+
+                        customClientInstance.commands.set(commandDefinition.name, commandDefinition);
+                        if (commandDefinition.aliases) {
+                            commandDefinition.aliases.forEach((aliasName: string) =>
+                                customClientInstance.aliases.set(aliasName, commandDefinition.name)
+                            );
+                        }
+
+                        categoryCommands.push(commandDefinition);
+                    } catch (error) {
+                        console.error(`Error loading command from file "${commandFileName}": ${error}`);
+                    }
+                });
+
+                await Promise.all(fileProcessing);
+
+                if (categoryCommands.length > 0) {
+                    for (const commandDefinition of categoryCommands) {
+                        const slashCommand = buildSlashCommand(commandDefinition, categoryName);
+                        slashCommandsMap.set(commandDefinition.name.toLowerCase(), slashCommand);
+                    }
+                }
+            }
+        });
+
+        await Promise.all(categoryProcessing);
+
+        // Register slash commands when client is ready
+        customClientInstance.on('ready', async () => {
             try {
-                if (loadSlashGlobal && client.application?.commands) {
-                    await client.application.commands.set(slashCommands.map((cmd) => cmd.toJSON()));
-                    console.log(`Registered ${slashCommands.length} global slash commands.`);
+                const slashCommandsArray = Array.from(slashCommandsMap.values()).map((cmd) => cmd.toJSON());
+                if (enableGlobalSlashCommands && customClientInstance.application?.commands) {
+                    await customClientInstance.application.commands.set(slashCommandsArray);
+                    console.log(`Registered ${slashCommandsArray.length} global slash commands.`);
+                } else {
+                    customClientInstance.guilds.cache.forEach(async (guildInstance) => {
+                        try {
+                            await guildInstance.commands.set(slashCommandsArray);
+                        } catch (error) {
+                            console.error(`Error setting commands for guild ${guildInstance.id}: ${error}`);
+                        }
+                    });
                 }
             } catch (error) {
                 console.error(`Error registering global slash commands: ${error}`);
             }
         });
 
-        client.on('guildCreate', async (guild) => {
-            if (!loadSlashGlobal) {
+        // Register commands for newly joined guilds
+        customClientInstance.on('guildCreate', async (guildInstance) => {
+            if (!enableGlobalSlashCommands) {
                 try {
-                    await guild.commands.set(slashCommands.map((cmd) => cmd.toJSON()));
+                    await guildInstance.commands.set(Array.from(slashCommandsMap.values()).map((cmd) => cmd.toJSON()));
                 } catch (error) {
-                    console.error(`Error setting commands for guild ${guild.id}: ${error}`);
+                    console.error(`Error setting commands for guild ${guildInstance.id}: ${error}`);
                 }
             }
         });
 
-        console.log(`Successfully loaded ${client.commands.size} text commands.`);
+        console.log(`Successfully loaded ${customClientInstance.commands.size} text commands.`);
     } catch (error) {
         console.error(`Error loading commands: ${error}`);
     }
 }
 
-function validateCommand(command: Command): boolean {
-    return typeof command.name === 'string' && typeof command.description === 'string' && (!command.options || Array.isArray(command.options));
+function validateCommandStructure(command: Command): boolean {
+    return (
+        typeof command.name === 'string' &&
+        typeof command.description === 'string' &&
+        (!command.options || Array.isArray(command.options)) &&
+        typeof command.execute === 'function' &&
+        (!command.textExtract || typeof command.textExtract === 'function') &&
+        (!command.slashExtract || typeof command.slashExtract === 'function')
+    );
 }
 
-function buildSlashCommand(command: Command): SlashCommandBuilder {
-    const slashCommand = new SlashCommandBuilder().setName(command.name).setDescription(command.description);
-    if (command.options) {
-        for (const option of command.options) {
-            const [type, optionObject] = Object.entries(option)[0];
-            const optionBuilder = optionBuilderMapping[type.toLowerCase()];
-            if (optionBuilder) {
-                optionBuilder(slashCommand, optionObject);
-            } else {
-                console.warn(`Unknown option type "${type}" in command "${command.name}".`);
-            }
-        }
-    }
-    return slashCommand;
-}
 
 interface OptionObject {
     name: string;
@@ -108,15 +159,30 @@ interface OptionObject {
 }
 
 interface OptionBuilderMapping {
-    [key: string]: (cmd: SlashCommandOptionsOnlyBuilder, opt: OptionObject) => SlashCommandOptionsOnlyBuilder;
+    [optionType: string]: (commandBuilder: SlashCommandOptionsOnlyBuilder, optionDetails: OptionObject) => SlashCommandOptionsOnlyBuilder;
 }
 
 const optionBuilderMapping: OptionBuilderMapping = {
-    string: (cmd, opt) => cmd.addStringOption((o) => o.setName(opt.name).setDescription(opt.description).setRequired(opt.required || false)),
-    integer: (cmd, opt) => cmd.addIntegerOption((o) => o.setName(opt.name).setDescription(opt.description).setRequired(opt.required || false)),
-    boolean: (cmd, opt) => cmd.addBooleanOption((o) => o.setName(opt.name).setDescription(opt.description).setRequired(opt.required || false)),
-    user: (cmd, opt) => cmd.addUserOption((o) => o.setName(opt.name).setDescription(opt.description).setRequired(opt.required || false)),
-    channel: (cmd, opt) => cmd.addChannelOption((o) => o.setName(opt.name).setDescription(opt.description).setRequired(opt.required || false)),
-    role: (cmd, opt) => cmd.addRoleOption((o) => o.setName(opt.name).setDescription(opt.description).setRequired(opt.required || false)),
-    attachment: (cmd, opt) => cmd.addAttachmentOption((o) => o.setName(opt.name).setDescription(opt.description).setRequired(opt.required || false)),
+    string: (builder, details) => addOption(builder.addStringOption, details),
+    integer: (builder, details) => addOption(builder.addIntegerOption, details),
+    boolean: (builder, details) => addOption(builder.addBooleanOption, details),
+    user: (builder, details) => addOption(builder.addUserOption, details),
+    channel: (builder, details) => addOption(builder.addChannelOption, details),
+    role: (builder, details) => addOption(builder.addRoleOption, details),
+    attachment: (builder, details) => addOption(builder.addAttachmentOption, details),
+    number: (builder, details) => addOption(builder.addNumberOption, details),
+    mentionable: (builder, details) => addOption(builder.addMentionableOption, details),
 };
+
+// Utility function streamlining logic for adding an option.
+function addOption(
+    method: (callback: (option: any) => any) => SlashCommandOptionsOnlyBuilder,
+    details: OptionObject
+): SlashCommandOptionsOnlyBuilder {
+    return method((option) =>
+        option
+            .setName(details.name)
+            .setDescription(details.description)
+            .setRequired(details.required || false)
+    );
+}
