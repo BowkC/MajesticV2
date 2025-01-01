@@ -5,6 +5,7 @@ import { CustomClient } from '../index';
 import { getConfig } from '../config';
 const { readdir, lstat } = fsPromises;
 
+// The structure of a command object.
 interface Command {
     name: string;
     usage: string;
@@ -17,6 +18,12 @@ interface Command {
     execute: (clientInstance: CustomClient, interactionObject: Message | CommandInteraction, commandPrefix: string, optionData?: object) => void;
 }
 
+/**
+ * Simple utility function to build a slash command from a command definition.
+ * @param commandDetails the command definition
+ * @param categoryName the category name
+ * @returns the complete slash command builder
+ */
 function buildSlashCommand(commandDetails: Command, categoryName: string): SlashCommandBuilder {
     const slashCommandBuilder = new SlashCommandBuilder()
         .setName(categoryName.toLowerCase())
@@ -45,6 +52,11 @@ function buildSlashCommand(commandDetails: Command, categoryName: string): Slash
     return slashCommandBuilder;
 }
 
+/**
+ * Key logic to load all commands from the commands directory.
+ * This function registers both text and slash commands.
+ * @param customClientInstance the client instance
+ */
 export default async function loadCommands(customClientInstance: CustomClient) {
     try {
         const enableGlobalSlashCommands = getConfig().slashGlobal || false;
@@ -140,15 +152,42 @@ export default async function loadCommands(customClientInstance: CustomClient) {
     }
 }
 
+/**
+ * Function to validate the structure of a command object.
+ * @param command the command to validate
+ * @returns whether the command structure is valid
+ */
 function validateCommandStructure(command: Command): boolean {
-    return (
-        typeof command.name === 'string' &&
-        typeof command.description === 'string' &&
-        (!command.options || Array.isArray(command.options)) &&
-        typeof command.execute === 'function' &&
-        (!command.textExtract || typeof command.textExtract === 'function') &&
-        (!command.slashExtract || typeof command.slashExtract === 'function')
-    );
+    // Define validators for the command object's structure.
+    const validators = [
+        { condition: !command.name || typeof command.name !== 'string', message: 'Command is missing a valid name' },
+        { condition: !command.description || typeof command.description !== 'string', message: 'Command is missing a valid description' },
+        { condition: command.options && !Array.isArray(command.options), message: 'Command options must be an array' },
+        { condition: typeof command.execute !== 'function', message: 'Command is missing a valid execute function' },
+        { condition: command.textExtract && typeof command.textExtract !== 'function', message: 'Command textExtract must be a function' },
+        { condition: command.slashExtract && typeof command.slashExtract !== 'function', message: 'Command slashExtract must be a function' },
+    ];
+
+    // Ensure all validators conditions are met. If not, log the error and return false.
+    for (const { condition, message } of validators) {
+        if (condition) {
+            console.error(`${message}: ${JSON.stringify(command)}`);
+            return false;
+        }
+    }
+
+    // Validate options if they exist, 
+    // delve deeper into the options array to validate each option.
+    if (command.options) {
+        for (const option of command.options) {
+            if (!option.name || !option.description || !option.type) {
+                console.error(`Option is missing required fields: ${JSON.stringify(option)}`);
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 
@@ -162,6 +201,8 @@ interface OptionBuilderMapping {
     [optionType: string]: (commandBuilder: SlashCommandOptionsOnlyBuilder, optionDetails: OptionObject) => SlashCommandOptionsOnlyBuilder;
 }
 
+// Mapping of option types to their respective builder methods.
+// This mapping is used to streamline the process of adding options to a command.
 const optionBuilderMapping: OptionBuilderMapping = {
     string: (builder, details) => addOption(builder.addStringOption, details),
     integer: (builder, details) => addOption(builder.addIntegerOption, details),
