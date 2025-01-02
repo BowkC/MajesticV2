@@ -6,7 +6,7 @@ import { getConfig } from '../config';
 const { readdir, lstat } = fsPromises;
 
 // The structure of a command object.
-interface Command {
+export interface Command {
     name: string;
     usage: string;
     description: string;
@@ -15,7 +15,7 @@ interface Command {
     options?: Array<{ [optionType: keyof OptionBuilderMapping]: { name: string; description: string; required?: boolean } }>;
     textExtract?: (messageInteraction: Message) => object;
     slashExtract?: (commandInteraction: CommandInteraction) => object;
-    execute: (clientInstance: CustomClient, interactionObject: Message | CommandInteraction, commandPrefix: string, optionData?: object) => void;
+    execute: (clientInstance: CustomClient, interactionObject: Message | CommandInteraction, commandPrefix: string, config: object, optionData?: object) => void;
 }
 
 /**
@@ -91,7 +91,7 @@ export default async function loadCommands(customClientInstance: CustomClient) {
                         customClientInstance.commands.set(commandDefinition.name, commandDefinition);
                         if (commandDefinition.aliases) {
                             commandDefinition.aliases.forEach((aliasName: string) =>
-                                customClientInstance.aliases.set(aliasName, commandDefinition.name)
+                                customClientInstance.aliases.set(aliasName.toLowerCase(), commandDefinition.name)
                             );
                         }
 

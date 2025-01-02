@@ -9,13 +9,17 @@ import { EmbedBuilder, resolveColor } from 'discord.js';
  * @param client the client to log the error through
  * @param error the error to log
  */
-export function logError(client: CustomClient, error: String) {
+export function logError(client: CustomClient, error: String | Error): void {
   const config = getConfig();
 
+  // Make sure the error becomes a string.
+  if (error instanceof Error) {
+    error = error.stack || error.message;
+  }
   try {
     // Employ a size restriction to prevent too large of messages
     const SIZE_RESTRICTION = 1990;
-    let splitMessages = new Array(error.length / SIZE_RESTRICTION);
+    const splitMessages = new Array(error.length / SIZE_RESTRICTION);
     splitMessages.forEach((message, index) => {
       splitMessages[index] = error.substring(index * SIZE_RESTRICTION, (index + 1) * SIZE_RESTRICTION);
     });
@@ -36,7 +40,15 @@ export function logError(client: CustomClient, error: String) {
   }
 }
 
-export function errorEmbed(message: string, prefix: string) {
+/**
+ * A function to generate a default 
+ * error embed for the bot
+ * 
+ * @param message the message to display
+ * @param prefix the prefix of the bot
+ * @returns an embed with the error message
+ */
+export function errorEmbed(message: string, prefix: string): EmbedBuilder {
   const config = getConfig();
   const options = config.embedStructure;
 
@@ -49,7 +61,15 @@ export function errorEmbed(message: string, prefix: string) {
   return errorEmbed;
 }
 
-export function applyEmbedStructure(embed: EmbedBuilder, prefix: string) {
+/**
+ * A function to apply the default embed structure to an embed
+ * This includes the colour, footer, and timestamp
+ * 
+ * @param embed the embed to apply the structure to
+ * @param prefix the prefix of the bot
+ * @returns the embed with this structure applied
+ */
+export function applyEmbedStructure(embed: EmbedBuilder, prefix: string): EmbedBuilder {
   const config = getConfig();
   const options = config.embedStructure;
 

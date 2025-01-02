@@ -1,6 +1,6 @@
 import { Db as DbConnection, ObjectId } from 'mongodb';
 
-let guildCache = new Map();
+let guildCache: Map<string, any> = new Map();
 
 // Resets the cache entirely
 export function clearCache() {
@@ -24,9 +24,13 @@ export async function getCache(guild: string, db: DbConnection) {
     if (guildCache.has(guild)) {
         return guildCache.get(guild)
     } else {
-        let data = await db.collection('botGuilds').findOne({ _id: new ObjectId(guild) });
-        if (data !== null) data = data.data
-        guildCache.set(guild, data);
+        const data = await db.collection('botGuilds').findOne({ _id: new ObjectId(guild) });
+        if (data !== null) {
+            const extractData = data.data
+            if (extractData !== null) {
+                guildCache.set(guild, extractData);
+            }
+        }
         return data
     }
 }

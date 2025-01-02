@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits, Partials, Collection } from 'discord.js';
+import { Command } from './handlers/command'
 import { Db as DbConnection } from 'mongodb';
 import { clearCache } from './handlers/botCache';
 import { logError } from './handlers/helperFunctions';
@@ -9,7 +10,7 @@ import { exec } from 'child_process';
 
 // Extend Discord.js Client with Custom Properties
 export class CustomClient extends Client {
-  commands: Collection<string, any>;
+  commands: Collection<string, Command>;
   aliases: Collection<string, string>;
   categories: string[];
   cooldowns: Collection<string, number>;

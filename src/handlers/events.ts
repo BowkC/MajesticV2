@@ -1,18 +1,25 @@
 import fs from 'fs';
 import colors from 'colors';
 import path from 'path';
+import { CustomClient } from '../index';
+import { Events, RESTEvents } from 'discord.js';
 
 const allEvents: string[] = [];
 
-const loadDir = (dir: string, client: any): void => {
-
-    const dirPath = path.resolve(__dirname, `../events/${dir}`);;
+/**
+ * Load a single directory of events (of which there are two)
+ * @param dir the directory to load events from
+ * @param client the client to bind the events to
+ * @returns void
+ */
+const loadDir = (dir: string, client: CustomClient): void => {
+    const dirPath = path.resolve(__dirname, `../events/${dir}`);
 
     if (!fs.existsSync(dirPath)) {
         console.warn(colors.yellow(`Directory not found: ${dirPath}`));
         return;
     }
-
+    
     const eventFolders = fs.readdirSync(dirPath).filter((file) => file.endsWith(".js"));
 
     for (const file of eventFolders) {
@@ -25,15 +32,12 @@ const loadDir = (dir: string, client: any): void => {
             if (eventLower === 'commandcreate') {
                 client.on('messageCreate', event.bind(null, client));
                 client.on('interactionCreate', event.bind(null, client));
-            } else if (
-                eventLower !== 'apirequest' &&
-                eventLower !== 'apiresponse' &&
-                eventLower !== 'invalidrequestwarning' &&
-                eventLower !== 'ratelimit'
-            ) {
+            } else if (Object.keys(RESTEvents).map((key) => key.toLowerCase()).includes(eventLower)) {
+                client.rest.on(eventName, event.bind(null, client));
+            } else if(Object.keys(Events).map((key) => key.toLowerCase()).includes(eventLower)) {
                 client.on(eventName, event.bind(null, client));
             } else {
-                client.rest.on(eventName, event.bind(null, client));
+                console.warn(colors.yellow(`Unknown event: ${eventName}`));
             }
         } catch (error) {
             console.error(colors.red(`Events File Error First Try:: ${error}`));
@@ -41,9 +45,12 @@ const loadDir = (dir: string, client: any): void => {
     }
 };
 
-export default async (client: any): Promise<void> => {
+/**
+ * Load all events from the events directory
+ */
+export default async (client: CustomClient): Promise<void> => {
     try {
-        let eventCount = 0;
+        let eventCount: number = 0;
 
         for (const dir of ['client', 'guild']) {
             const dirPath = path.resolve(__dirname, `../events/${dir}`);
