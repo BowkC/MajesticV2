@@ -5,14 +5,14 @@ import { CustomClient } from '../../index';
 module.exports = {
     name: "info",
     usage: "info",
-    description: "Displays bot information and statistics",
+    description: "Allows access to bot information and statistics",
     cooldown: 2,
     aliases: ["botstats", "botinfo"],
-    execute: async (client: CustomClient, interaction: Message | CommandInteraction, config: object, prefix: string) => {
+    execute: async (client: CustomClient, interaction: Message | CommandInteraction, prefix: string) => {
         // Define the variables to be used in the embed
         const guildCount = client.guilds.cache.size;
         const apiPing = Math.round(client.ws.ping);
-        const latency = Math.round(Date.now() - interaction.createdTimestamp);
+        const latency = Math.round(interaction.createdTimestamp - Date.now());
         const memoryUsage = (process.memoryUsage().rss / 1024 / 1024).toFixed(2);
         const userCount = client.guilds.cache.map((g: { memberCount: number; }) => g.memberCount || 0).reduce((x: number, y: number) => x + y, 0);
         /**

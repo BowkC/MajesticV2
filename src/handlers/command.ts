@@ -1,8 +1,21 @@
-import { Collection, CommandInteraction, Message, SlashCommandBuilder, SlashCommandOptionsOnlyBuilder } from 'discord.js';
-import path from 'path';
+import {
+    ApplicationCommand,
+    ApplicationCommandDataResolvable,
+    Collection,
+    CommandInteraction,
+    Message,
+    SlashCommandBuilder,
+    SlashCommandOptionsOnlyBuilder
+} from 'discord.js';
+
+import { deepNormalise, findDifferences } from './helperFunctions';
 import { promises as fsPromises } from 'fs';
 import { CustomClient } from '../index';
 import { getConfig } from '../config';
+import path from 'path';
+
+// Use the fsPromises object to access the async file system functions.
+// More efficient than using the synchronous fs functions.
 const { readdir, lstat } = fsPromises;
 
 // The structure of a command object.
@@ -15,7 +28,7 @@ export interface Command {
     options?: Array<{ [optionType: keyof OptionBuilderMapping]: { name: string; description: string; required?: boolean } }>;
     textExtract?: (messageInteraction: Message) => object;
     slashExtract?: (commandInteraction: CommandInteraction) => object;
-    execute: (clientInstance: CustomClient, interactionObject: Message | CommandInteraction, commandPrefix: string, config: object, optionData?: object) => void;
+    execute: (clientInstance: CustomClient, interactionObject: Message | CommandInteraction, commandPrefix: string, config?: object, optionData?: object) => void;
 }
 
 /**
@@ -34,14 +47,14 @@ function buildSlashCommand(commandDetails: Command, categoryName: string): Slash
         subcommandBuilder.setName(commandDetails.name.toLowerCase())
             .setDescription(commandDetails.description);
 
-        if (commandDetails.options) {
+        if (commandDetails.options && commandDetails.options.length > 0) {
             for (const commandOption of commandDetails.options) {
                 const [optionType, optionDetails] = Object.entries(commandOption)[0];
                 const optionBuilder = optionBuilderMapping[optionType.toLowerCase()];
                 if (optionBuilder) {
                     optionBuilder(subcommandBuilder as unknown as SlashCommandOptionsOnlyBuilder, optionDetails);
                 } else {
-                    console.warn(`Unknown option type "${optionType}" in command "${commandDetails.name}".`);
+                    console.warn(`[CommandLoader] Unknown option type "${optionType}" in command "${commandDetails.name}".`);
                 }
             }
         }
@@ -55,17 +68,18 @@ function buildSlashCommand(commandDetails: Command, categoryName: string): Slash
 /**
  * Key logic to load all commands from the commands directory.
  * This function registers both text and slash commands.
- * @param customClientInstance the client instance
+ * @param clientInstance the client instance
  */
-export default async function loadCommands(customClientInstance: CustomClient) {
+export default async function loadCommands(clientInstance: CustomClient) {
     try {
-        const enableGlobalSlashCommands = getConfig().slashGlobal || false;
+        const config = getConfig();
+        const enableGlobalSlashCommands = config.slashGlobal || false;
 
         const commandsDirectoryPath = path.resolve(__dirname, '../commands');
         const slashCommandsMap: Map<string, SlashCommandBuilder> = new Map();
 
-        customClientInstance.commands = new Collection<string, Command>();
-        customClientInstance.aliases = new Collection<string, string>();
+        clientInstance.commands = new Collection<string, Command>();
+        clientInstance.aliases = new Collection<string, string>();
 
         const commandDirectories = await readdir(commandsDirectoryPath);
 
@@ -84,20 +98,20 @@ export default async function loadCommands(customClientInstance: CustomClient) {
                     try {
                         const { default: commandDefinition } = await import(`${commandDirectoryPath}/${commandFileName}`);
                         if (!validateCommandStructure(commandDefinition)) {
-                            console.warn(`Invalid command structure in file: ${commandFileName}`);
+                            console.warn(`[CommandLoader] Invalid command structure in file: ${commandFileName}`);
                             return;
                         }
 
-                        customClientInstance.commands.set(commandDefinition.name, commandDefinition);
+                        clientInstance.commands.set(commandDefinition.name, commandDefinition);
                         if (commandDefinition.aliases) {
                             commandDefinition.aliases.forEach((aliasName: string) =>
-                                customClientInstance.aliases.set(aliasName.toLowerCase(), commandDefinition.name)
+                                clientInstance.aliases.set(aliasName.toLowerCase(), commandDefinition.name)
                             );
                         }
 
                         categoryCommands.push(commandDefinition);
                     } catch (error) {
-                        console.error(`Error loading command from file "${commandFileName}": ${error}`);
+                        console.error(`[CommandLoader] Error loading command from file "${commandFileName}": ${error}`);
                     }
                 });
 
@@ -114,41 +128,121 @@ export default async function loadCommands(customClientInstance: CustomClient) {
 
         await Promise.all(categoryProcessing);
 
-        // Register slash commands when client is ready
-        customClientInstance.on('ready', async () => {
-            try {
-                const slashCommandsArray = Array.from(slashCommandsMap.values()).map((cmd) => cmd.toJSON());
-                if (enableGlobalSlashCommands && customClientInstance.application?.commands) {
-                    await customClientInstance.application.commands.set(slashCommandsArray);
-                    console.log(`Registered ${slashCommandsArray.length} global slash commands.`);
-                } else {
-                    customClientInstance.guilds.cache.forEach(async (guildInstance) => {
-                        try {
-                            await guildInstance.commands.set(slashCommandsArray);
-                        } catch (error) {
-                            console.error(`Error setting commands for guild ${guildInstance.id}: ${error}`);
+        // Register slash commands when client is ready [only if they need to be updated]
+        // This boosts efficiency by only updating commands when necessary.
+        clientInstance.on('ready', async () => {
+            if (clientInstance.application) {
+                try {
+                    // Fetch current commands to compare with new commands
+                    let currentCommands: Collection<string, ApplicationCommand> = new Collection();
+
+                    // In the case of global, fetch from the application.
+                    // In the case of server-specific, fetch from the support server (if available).
+                    if (enableGlobalSlashCommands) {
+                        currentCommands = await clientInstance.application.commands.fetch();
+                    } else {
+                        const supportServer = await clientInstance.guilds.cache.get(config.supportServer)
+                        if (supportServer) currentCommands = await supportServer.commands.fetch()
+                    }
+
+                    // Determine which commands need to be updated
+                    const commandsToUpdate: Array<[ApplicationCommand, SlashCommandBuilder, object]> = [];
+                    const commandsToAdd: Array<SlashCommandBuilder> = [];
+
+                    for (const [, slashCommand] of slashCommandsMap.entries()) {
+                        const existingCommand = currentCommands.find(command => command.name === slashCommand.name);
+
+                        if (!existingCommand) {
+                            if (!commandsToAdd.includes(slashCommand)) commandsToAdd.push(slashCommand);
+                        } else {
+                            const differences = findSlashChanges(slashCommand, existingCommand);
+                            if (differences !== null) {
+                                if (!commandsToUpdate.map((command) => command[0]).includes(existingCommand)) {
+                                    commandsToUpdate.push([existingCommand, slashCommand, differences]);
+                                }
+                            }
                         }
-                    });
+                    }
+
+                    if (commandsToUpdate.length > 0) {
+                        const resolvedCommandsToUpdate = commandsToUpdate.map(([existingCommand, newCommand, differences]) => {
+                            const commandChanges: { [key: string]: any } = {};
+                            const newCommandJSON = newCommand.toJSON();
+                            Object.keys(differences).forEach((key) => {
+                                commandChanges[key] = (newCommandJSON as any)[key];
+                            });
+                            return [existingCommand, commandChanges];
+                        });
+                        if (enableGlobalSlashCommands) {
+                            if (clientInstance.application) {
+                                for (const [existingCommand, commandChanges] of resolvedCommandsToUpdate) {
+                                    await existingCommand.edit(commandChanges);
+                                }
+                            } else {
+                                console.error('[CommandLoader] Client application is unavailable.');
+                            }
+                            console.log(`[CommandLoader] Updated ${commandsToUpdate.length} global slash commands.`);
+                        } else {
+                            clientInstance.guilds.cache.forEach(async (guildInstance) => {
+                                try {
+                                    for (const [existingCommand, commandChanges] of resolvedCommandsToUpdate) {
+                                        console.log(commandChanges);
+                                        await guildInstance.commands.edit(existingCommand.id, commandChanges as Partial<ApplicationCommandDataResolvable>);
+                                    }
+                                } catch (error) {
+                                    console.error(`[CommandLoader] Failed to edit commands for guild ${guildInstance.id}: ${error}`);
+                                }
+                            });
+                            console.log(`[CommandLoader] Updated ${commandsToUpdate.length} server-specific slash commands.`);
+                        }
+                    } else {
+                        console.log('[CommandLoader] No changes detected in slash commands. No updates performed.');
+                    }
+                    if (commandsToAdd.length > 0) {
+                        const slashCommandsArray = commandsToAdd.map((command) => command.toJSON());
+
+                        if (enableGlobalSlashCommands) {
+                            if (clientInstance.application) {
+                                await clientInstance.application.commands.set(slashCommandsArray);
+                            } else {
+                                console.error('[CommandLoader] Client application is unavailable.');
+                            }
+                            console.log(`[CommandLoader] Added ${slashCommandsArray.length} global slash commands.`);
+                        } else {
+                            clientInstance.guilds.cache.forEach(async (guildInstance) => {
+                                try {
+                                    await guildInstance.commands.set(slashCommandsArray);
+                                } catch (error) {
+                                    console.error(`[CommandLoader] Failed to set commands for guild ${guildInstance.id}: ${error}`);
+                                }
+                            });
+                            console.log(`[CommandLoader] Added ${slashCommandsArray.length} server-specific slash commands.`);
+                        }
+                    } else {
+                        console.log('[CommandLoader] No new slash commands detected.');
+                    }
+                } catch (error) {
+                    console.error(`[CommandLoader] Error registering slash commands: ${error}`);
                 }
-            } catch (error) {
-                console.error(`Error registering global slash commands: ${error}`);
+            } else {
+                console.error('[CommandLoader] Client application is unavailable.');
             }
         });
 
         // Register commands for newly joined guilds
-        customClientInstance.on('guildCreate', async (guildInstance) => {
+        clientInstance.on('guildCreate', async (guildInstance) => {
             if (!enableGlobalSlashCommands) {
                 try {
-                    await guildInstance.commands.set(Array.from(slashCommandsMap.values()).map((cmd) => cmd.toJSON()));
+                    await guildInstance.commands.set(Array.from(slashCommandsMap.values()).map((command) => command.toJSON()));
                 } catch (error) {
-                    console.error(`Error setting commands for guild ${guildInstance.id}: ${error}`);
+                    console.error(`[CommandLoader] Error setting commands for guild ${guildInstance.id}: ${error}`);
                 }
             }
         });
 
-        console.log(`Successfully loaded ${customClientInstance.commands.size} text commands.`);
+        console.log(`[CommandLoader] Successfully loaded ${clientInstance.commands.size} text commands.`);
     } catch (error) {
-        console.error(`Error loading commands: ${error}`);
+        console.error(`[CommandLoader] Error loading commands: ${error}`);
     }
 }
 
@@ -171,7 +265,7 @@ function validateCommandStructure(command: Command): boolean {
     // Ensure all validators conditions are met. If not, log the error and return false.
     for (const { condition, message } of validators) {
         if (condition) {
-            console.error(`${message}: ${JSON.stringify(command)}`);
+            console.error(`[CommandLoader] ${message}: ${JSON.stringify(command)}`);
             return false;
         }
     }
@@ -181,7 +275,7 @@ function validateCommandStructure(command: Command): boolean {
     if (command.options) {
         for (const option of command.options) {
             if (!option.name || !option.description || !option.type) {
-                console.error(`Option is missing required fields: ${JSON.stringify(option)}`);
+                console.error(`[CommandLoader] Option is missing required fields: ${JSON.stringify(option)}`);
                 return false;
             }
         }
@@ -190,6 +284,22 @@ function validateCommandStructure(command: Command): boolean {
     return true;
 }
 
+/**
+ * Function to check if a slash command has changed 
+ * and find those changes if they exist.
+ * 
+ * @param newCommand the [potentially] new slash command
+ * @param existingCommand the existing slash command
+ * @returns what changed or null if no changes
+ */
+function findSlashChanges(newCommand: SlashCommandBuilder, existingCommand: ApplicationCommand): object | null {
+    const normalisedNew = deepNormalise(newCommand);
+    // Normalise using newCommand keys to ensure all keys are present [and identical] in the existing command
+    const normalisedExisting = deepNormalise(existingCommand, Object.keys(normalisedNew));
+    const differences = findDifferences(normalisedNew, normalisedExisting);
+
+    return differences;
+}
 
 interface OptionObject {
     name: string;

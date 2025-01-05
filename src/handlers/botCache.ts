@@ -24,7 +24,7 @@ export async function getCache(guild: string, db: DbConnection) {
     if (guildCache.has(guild)) {
         return guildCache.get(guild)
     } else {
-        const data = await db.collection('botGuilds').findOne({ _id: new ObjectId(guild) });
+        const data = await db.collection('botGuilds').findOne({ _id: guild as unknown as ObjectId });
         if (data !== null) {
             const extractData = data.data
             if (extractData !== null) {
@@ -42,7 +42,7 @@ export async function getCache(guild: string, db: DbConnection) {
 export async function updateCache(guild: string, db: DbConnection) {
     const collection = await db.collection('botGuilds');
     if (collection !== null) {
-        const collectionData = await collection.findOne({ _id: new ObjectId(guild) });
+        const collectionData = await collection.findOne({ _id: guild as unknown as ObjectId });
         if (collectionData != null) {
             guildCache.set(guild, collectionData.data);
         }

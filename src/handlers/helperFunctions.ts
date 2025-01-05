@@ -1,7 +1,6 @@
 import { CustomClient } from '../index'
 import { getConfig } from '../config';
-import { EmbedBuilder, resolveColor } from 'discord.js';
-
+import { EmbedBuilder } from 'discord.js';
 /**
  * Synchronous function to handle errors
  * logging globally throughout the bot
@@ -78,4 +77,127 @@ export function applyEmbedStructure(embed: EmbedBuilder, prefix: string): EmbedB
     .setFooter({ text: `Prefix ${prefix}`, iconURL: options.footerIcon })
     .setTimestamp();
   return newEmbed
+}
+
+/**
+ * Function to escape a string for use in a regex
+ * @param text the text to escape
+ * @returns the escaped text
+ */
+export function escapeString(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, `\\$&`);
+}
+
+/**
+ * Function to normalise an object, removing empty arrays and circular references
+ * It also allows for only certain keys to be kept and removes empty arrays
+ * 
+ * @param object the object to normalise
+ * @param keysToKeep the keys to keep in the object [optional]
+ * @param seen a set to keep track of seen objects [optional]
+ * @returns the normalised object
+ */
+export function deepNormalise(object: any, keysToKeep?: string[], seen = new WeakSet()): any {
+  if (object === null || object === undefined) return null;
+
+  if (typeof object === "object") {
+    // Handle circular references to avoid infinite loops
+    if (seen.has(object)) return null;
+    seen.add(object);
+
+    if (Array.isArray(object)) {
+      // Normalise array elements and remove empty arrays
+      const normalisedArray = object.map(item => deepNormalise(item, keysToKeep, seen)).filter(Boolean);
+
+      // Treat empty arrays as null/undefined
+      return normalisedArray.length > 0 ? normalisedArray : null;
+    }
+
+    // For objects, normalise only relevant keys
+    const plainObject = object.toJSON ? object.toJSON() : { ...object };
+    return Object.entries(plainObject).reduce((acc, [key, value]) => {
+      if (!keysToKeep || keysToKeep.includes(key)) {
+        const normalisedValue = deepNormalise(value, keysToKeep, seen);
+        if (normalisedValue !== null) {
+          acc[key] = normalisedValue;
+        }
+      }
+      return acc;
+    }, {} as any);
+  }
+
+  // Return primitives as-is
+  return object;
+}
+
+// /**
+//  * Function to check if two objects have differences
+//  * ...or to check if a primitive has changed
+//  * 
+//  * @param newObject the new object to compare
+//  * @param existingObject the existing object to compare
+//  * @returns whether the objects have differences
+//  */
+// export function hasDifferences(newObject: any, existingObject: any): boolean {
+//   if (typeof newObject !== "object" || newObject === null) {
+//     // Primitive comparison
+//     return newObject !== existingObject;
+//   }
+
+//   // Array comparison (including nested arrays with recursion)
+//   if (Array.isArray(newObject)) {
+//     if (!Array.isArray(existingObject) || newObject.length !== existingObject.length) {
+//       return true;
+//     }
+//     return newObject.some((item, index) => hasDifferences(item, existingObject[index]));
+//   }
+
+//   // Object comparison (including nested objects with recursion)
+//   for (const key of Object.keys(newObject)) {
+//     if (!(key in existingObject) || hasDifferences(newObject[key], existingObject[key])) {
+//       return true;
+//     }
+//   }
+
+//   return false;
+// }
+
+/**
+ * Function to find differences between two objects.
+ * Returns a new object containing only the parts of `newObject` that are different from `existingObject`.
+ *
+ * @param newObject The new object to compare.
+ * @param existingObject The existing object to compare.
+ * @returns An object representing the differences, or null if no differences are found.
+ */
+export function findDifferences(newObject: any, existingObject: any): any {
+  if (typeof newObject !== "object" || newObject === null) {
+    // Primitive comparison
+    return newObject !== existingObject ? newObject : null;
+  }
+
+  if (Array.isArray(newObject)) {
+    if (!Array.isArray(existingObject) || newObject.length !== existingObject.length) {
+      // If arrays are entirely different, return the new array
+      return newObject;
+    }
+    // Compare array elements
+    const differences = newObject.map((item, index) =>
+      findDifferences(item, existingObject[index])
+    );
+    // Return only the changed parts of the array
+    return differences.some(diff => diff !== null) ? differences : null;
+  }
+
+  // Object comparison
+  const diffObject: Record<string, any> = {};
+  for (const key of Object.keys(newObject)) {
+    const diff = findDifferences(newObject[key], existingObject?.[key]);
+    if (diff !== null) {
+      diffObject[key] = diff;
+    }
+  }
+
+  // If no differences found in the object, return null
+  return Object.keys(diffObject).length > 0 ? diffObject : null;
 }

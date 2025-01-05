@@ -1,16 +1,17 @@
 import { CommandInteraction, CommandInteractionOptionResolver, Message } from "discord.js";
 import { CustomClient } from "../../index";
-import { errorEmbed, logError } from "../../handlers/helperFunctions";
+import { errorEmbed, logError, escapeString } from "../../handlers/helperFunctions";
 import { getConfig } from "../../config";
 import { getCache } from "../../handlers/botCache";
 import { Command } from "../../handlers/command";
 
 module.exports = async (client: CustomClient, interaction: Message | CommandInteraction) => {
     // If the interaction is not in a guild, return
-    if (!interaction.guild) return;
+    if (!interaction.guild || client.user === null) return;
 
     const config = getConfig();
     const guildData = await getCache(interaction.guild.id, config.db)
+
     let prefix: string;
     let commandName: string;
     let givenPrefix: string = "";
@@ -39,7 +40,8 @@ module.exports = async (client: CustomClient, interaction: Message | CommandInte
     if (alias && !command) command = client.commands.get(alias);
 
     // Return if command cannot be found or if the message does not start with the prefix
-    if (!command || (interaction instanceof Message && givenPrefix !== prefix)) return;
+    const prefixRegex = new RegExp(`^(<@!?${client.user.id}>|${escapeString(prefix)})`);
+    if (!command || !prefixRegex.test(prefix)) return;
 
     // Execute the command, use data extracting helpers to get the data 
     // from the interaction as a commonly shared object
@@ -56,6 +58,7 @@ module.exports = async (client: CustomClient, interaction: Message | CommandInte
                 optionData = command.textExtract(interaction as Message);
             }
         }
+        
         command.execute(client, interaction, prefix, config, optionData);
     } catch (e) {
         logError(client, e as Error);

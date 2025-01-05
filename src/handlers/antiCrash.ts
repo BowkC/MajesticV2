@@ -4,7 +4,7 @@ export default function antiCrash(client: any): void {
     });
   
     process.on('uncaughtException', async (error) => {
-        console.error(`Uncaught exception: ${error}`);
+        console.error(`Uncaught exception: ${error.stack}`);
     });
   
     process.on('warning', async (warning) => {
