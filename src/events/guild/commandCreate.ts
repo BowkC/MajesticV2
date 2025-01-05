@@ -1,6 +1,6 @@
 import { CommandInteraction, CommandInteractionOptionResolver, Message } from "discord.js";
+import { errorEmbed, logError, escapeString } from "../../helpers/functions";
 import { CustomClient } from "../../index";
-import { errorEmbed, logError, escapeString } from "../../handlers/helperFunctions";
 import { getConfig } from "../../config";
 import { getCache } from "../../handlers/botCache";
 import { Command } from "../../handlers/command";
@@ -58,7 +58,7 @@ module.exports = async (client: CustomClient, interaction: Message | CommandInte
                 optionData = command.textExtract(interaction as Message);
             }
         }
-        
+
         command.execute(client, interaction, prefix, config, optionData);
     } catch (e) {
         logError(client, e as Error);

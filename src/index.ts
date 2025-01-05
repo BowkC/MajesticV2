@@ -2,7 +2,7 @@ import { Client, GatewayIntentBits, Partials, Collection } from 'discord.js';
 import { Command } from './handlers/command'
 import { Db as DbConnection } from 'mongodb';
 import { clearCache } from './handlers/botCache';
-import { logError } from './handlers/helperFunctions';
+import { logError } from './helpers/functions';
 import { Config, initialiseConfig, getConfig } from './config.js';
 import cron from 'node-cron';
 import { promises as fs } from 'fs';

@@ -1,5 +1,5 @@
 import { CommandInteraction, EmbedBuilder, Message } from 'discord.js';
-import { applyEmbedStructure } from '../../handlers/helperFunctions';
+import { applyEmbedStructure } from '../../helpers/functions';
 import { CustomClient } from '../../index';
 
 module.exports = {

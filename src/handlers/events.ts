@@ -19,7 +19,7 @@ const loadDir = (dir: string, client: CustomClient): void => {
         console.warn(colors.yellow(`Directory not found: ${dirPath}`));
         return;
     }
-    
+
     const eventFolders = fs.readdirSync(dirPath).filter((file) => file.endsWith(".js"));
 
     for (const file of eventFolders) {
@@ -34,7 +34,7 @@ const loadDir = (dir: string, client: CustomClient): void => {
                 client.on('interactionCreate', event.bind(null, client));
             } else if (Object.keys(RESTEvents).map((key) => key.toLowerCase()).includes(eventLower)) {
                 client.rest.on(eventName, event.bind(null, client));
-            } else if(Object.keys(Events).map((key) => key.toLowerCase()).includes(eventLower)) {
+            } else if (Object.keys(Events).map((key) => key.toLowerCase()).includes(eventLower)) {
                 client.on(eventName, event.bind(null, client));
             } else {
                 console.warn(colors.yellow(`Unknown event: ${eventName}`));
