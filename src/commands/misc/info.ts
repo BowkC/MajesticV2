@@ -5,7 +5,7 @@ import { CustomClient } from '../../index';
 module.exports = {
     name: "info",
     usage: "info",
-    description: "Allows access to bot information and statistics",
+    description: "Returns bot information and statistics",
     cooldown: 2,
     aliases: ["botstats", "botinfo"],
     execute: async (client: CustomClient, interaction: Message | CommandInteraction, prefix: string) => {
@@ -15,6 +15,7 @@ module.exports = {
         const latency = Math.round(interaction.createdTimestamp - Date.now());
         const memoryUsage = (process.memoryUsage().rss / 1024 / 1024).toFixed(2);
         const userCount = client.guilds.cache.map((g: { memberCount: number; }) => g.memberCount || 0).reduce((x: number, y: number) => x + y, 0);
+
         /**
          * A function to create an embed with the bot's statistics that can be modified in future. 
          * @param cpuUsage the CPU usage of the bot

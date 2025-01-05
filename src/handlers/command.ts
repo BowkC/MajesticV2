@@ -141,8 +141,17 @@ export default async function loadCommands(clientInstance: CustomClient) {
                     if (enableGlobalSlashCommands) {
                         currentCommands = await clientInstance.application.commands.fetch();
                     } else {
-                        const supportServer = await clientInstance.guilds.cache.get(config.supportServer)
-                        if (supportServer) currentCommands = await supportServer.commands.fetch()
+                        // Gracefully handle errors if the bot fails to fetch commands from a guild.
+                        const guildPromises = clientInstance.guilds.cache.map(async (guildInstance) => {
+                            return guildInstance.commands.fetch();
+                        });
+                        const guildCommands = await Promise.allSettled(guildPromises);
+                        const fulfilledGuildCommands = guildCommands
+                            .filter(result => result.status === 'fulfilled')
+                            .map(result => (result as PromiseFulfilledResult<Collection<string, ApplicationCommand>>).value);
+
+                        // Purely a synchronous operation, no need for async/await.
+                        currentCommands = currentCommands.concat(...fulfilledGuildCommands);
                     }
 
                     // Determine which commands need to be updated
@@ -150,21 +159,22 @@ export default async function loadCommands(clientInstance: CustomClient) {
                     const commandsToAdd: Array<SlashCommandBuilder> = [];
 
                     for (const [, slashCommand] of slashCommandsMap.entries()) {
-                        const existingCommand = currentCommands.find(command => command.name === slashCommand.name);
+                        const existingCommands = currentCommands.filter(command => command.name === slashCommand.name);
 
-                        if (!existingCommand) {
-                            if (!commandsToAdd.includes(slashCommand)) commandsToAdd.push(slashCommand);
+                        if (existingCommands.size === 0) {
+                            commandsToAdd.push(slashCommand);
                         } else {
-                            const differences = findSlashChanges(slashCommand, existingCommand);
-                            if (differences !== null) {
-                                if (!commandsToUpdate.map((command) => command[0]).includes(existingCommand)) {
+                            existingCommands.forEach(existingCommand => {
+                                const differences = findSlashChanges(slashCommand, existingCommand);
+                                if (differences !== null) {
                                     commandsToUpdate.push([existingCommand, slashCommand, differences]);
                                 }
-                            }
+                            });
                         }
                     }
 
                     if (commandsToUpdate.length > 0) {
+                        // Resolve the commands to update with the changes valid in the .edit({}) method
                         const resolvedCommandsToUpdate = commandsToUpdate.map(([existingCommand, newCommand, differences]) => {
                             const commandChanges: { [key: string]: any } = {};
                             const newCommandJSON = newCommand.toJSON();
@@ -173,28 +183,20 @@ export default async function loadCommands(clientInstance: CustomClient) {
                             });
                             return [existingCommand, commandChanges];
                         });
-                        if (enableGlobalSlashCommands) {
-                            if (clientInstance.application) {
-                                for (const [existingCommand, commandChanges] of resolvedCommandsToUpdate) {
-                                    await existingCommand.edit(commandChanges);
+
+                        // Update the commands with the changes
+                        // Global and local commands are already loaded in, edit operation is the same
+                        const commandType = enableGlobalSlashCommands ? 'global' : 'server-specific';
+                        const updatePromises = resolvedCommandsToUpdate.map(([existingCommand, commandChanges]) => {
+                            existingCommand.edit(commandChanges).catch(
+                                (error: unknown) => {
+                                    console.error(`[CommandLoader] Failed to edit ${commandType} commands: ${error}`);
                                 }
-                            } else {
-                                console.error('[CommandLoader] Client application is unavailable.');
-                            }
-                            console.log(`[CommandLoader] Updated ${commandsToUpdate.length} global slash commands.`);
-                        } else {
-                            clientInstance.guilds.cache.forEach(async (guildInstance) => {
-                                try {
-                                    for (const [existingCommand, commandChanges] of resolvedCommandsToUpdate) {
-                                        console.log(commandChanges);
-                                        await guildInstance.commands.edit(existingCommand.id, commandChanges as Partial<ApplicationCommandDataResolvable>);
-                                    }
-                                } catch (error) {
-                                    console.error(`[CommandLoader] Failed to edit commands for guild ${guildInstance.id}: ${error}`);
-                                }
-                            });
-                            console.log(`[CommandLoader] Updated ${commandsToUpdate.length} server-specific slash commands.`);
-                        }
+                            );
+                        });
+                        await Promise.all(updatePromises);
+                        // Let the user know. 
+                        console.log(`[CommandLoader] Updated ${commandsToUpdate.length} ${commandType} slash commands.`);
                     } else {
                         console.log('[CommandLoader] No changes detected in slash commands. No updates performed.');
                     }
@@ -202,20 +204,20 @@ export default async function loadCommands(clientInstance: CustomClient) {
                         const slashCommandsArray = commandsToAdd.map((command) => command.toJSON());
 
                         if (enableGlobalSlashCommands) {
-                            if (clientInstance.application) {
+
+                            // Add the new slash commands to the application globally.
+                            try {
                                 await clientInstance.application.commands.set(slashCommandsArray);
-                            } else {
-                                console.error('[CommandLoader] Client application is unavailable.');
+                                console.log(`[CommandLoader] Added ${slashCommandsArray.length} global slash commands.`);
+                            } catch (error) {
+                                console.error(`[CommandLoader] Failed to set global commands: ${error}`);
                             }
-                            console.log(`[CommandLoader] Added ${slashCommandsArray.length} global slash commands.`);
                         } else {
-                            clientInstance.guilds.cache.forEach(async (guildInstance) => {
-                                try {
-                                    await guildInstance.commands.set(slashCommandsArray);
-                                } catch (error) {
+                            await Promise.all(clientInstance.guilds.cache.map(guildInstance =>
+                                guildInstance.commands.set(slashCommandsArray).catch(error => {
                                     console.error(`[CommandLoader] Failed to set commands for guild ${guildInstance.id}: ${error}`);
-                                }
-                            });
+                                })
+                            ));
                             console.log(`[CommandLoader] Added ${slashCommandsArray.length} server-specific slash commands.`);
                         }
                     } else {
