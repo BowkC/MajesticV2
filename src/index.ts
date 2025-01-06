@@ -60,9 +60,9 @@ async function main() {
 
     await backupCollections([cNames.BOT_GUILDS, cNames.BOT_USERS, cNames.BLACKLIST], db);
 
-    exec("tar -czvf files.tar.gz ../src", async (error, stdout) => {
+    exec("tar -czvf files.tar.gz ./src", async (error, stdout) => {
       if (error) {
-        return logError(client, 'Error creating backup: \n' + error);
+        return logError(client, error);
       }
 
       const channel = client.channels.cache.get(config.backupChannel);

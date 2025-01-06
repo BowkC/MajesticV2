@@ -18,13 +18,16 @@ export function logError(client: CustomClient, error: String | Error): void {
     try {
         // Employ a size restriction to prevent too large of messages
         const SIZE_RESTRICTION = 1990;
-        const splitMessages = new Array(error.length / SIZE_RESTRICTION);
-        splitMessages.forEach((message, index) => {
-            splitMessages[index] = error.substring(index * SIZE_RESTRICTION, (index + 1) * SIZE_RESTRICTION);
-        });
+        const arrayLength = Math.ceil(error.length / SIZE_RESTRICTION);
+
+        const splitMessages = new Array(arrayLength);
+        for(let i = 0; i < arrayLength; i++) {
+            splitMessages[i] = error.substring(i * SIZE_RESTRICTION, (i + 1) * SIZE_RESTRICTION);
+        }
 
         // Log each part of the error message
         const channel = client.channels.cache.get(config.botErrorLogs);
+
         if (channel && channel.isSendable()) {
             splitMessages.forEach((message) => {
                 channel.send(`\`\`\`\n${message}\n\`\`\``);
