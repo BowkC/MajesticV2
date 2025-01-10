@@ -71,8 +71,8 @@ module.exports = {
         }
         const linkField = {
             name: 'Links',
-            value: `[Invite\](${generateBotInvite(interaction)}) | [Support\](${config.supportInvite}) | [Vote\](${config.topGGVote})
-            [Donate\](${config.donation}) | [ToS\](${config.ToS}) | [Privacy\](${config.privacyPolicy})`,
+            value: `[Invite\](${generateBotInvite(interaction)}) | [Support\](${config.supportInvite}) | [Vote\](${config.topGGVote})` + '\n' +
+                `[Donate\](${config.donation}) | [ToS\](${config.ToS}) | [Privacy\](${config.privacyPolicy})`,
             inline: true
         }
 
@@ -163,8 +163,8 @@ module.exports = {
                     },
                     {
                         name: "Required Permissions",
-                        value: `Bot: ${(selectedCommand.botPermissions || []).join(", ") || "None"}
-                        Member: ${(selectedCommand.memberPermissions || []).join(", ") || "None"}`,
+                        value: `Bot: ${(selectedCommand.botPermissions || []).join(", ") || "None"}` + '\n' +
+                            `Member: ${(selectedCommand.memberPermissions || []).join(", ") || "None"}`,
                         inline: false
                     },
                     linkField

@@ -344,7 +344,7 @@ export async function handlePagination(
 }
 
 export function findCategory(category: string | null): any {
-    if (category === null) return null;
+    if (!category) return null;
     const config = getConfig();
     const categoryName = category.toLowerCase();
 
@@ -357,7 +357,7 @@ export function findCategory(category: string | null): any {
 }
 
 export function findCommand(command: string | null, client: CustomClient): any {
-    if (command === null) return null;
+    if (!command) return null;
     const commandName = command.toLowerCase();
 
     // Attempt to find the command by name or alias
