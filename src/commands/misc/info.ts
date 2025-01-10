@@ -1,6 +1,7 @@
-import { CommandInteraction, EmbedBuilder, Message } from 'discord.js';
-import { applyEmbedStructure } from '../../helpers/functions';
+import { ChatInputCommandInteraction, EmbedBuilder, Message } from 'discord.js';
+import { applyEmbedStructure, findUser } from '../../helpers/functions';
 import { CustomClient } from '../../index';
+import { Config } from '../../config';
 
 module.exports = {
     name: "info",
@@ -8,13 +9,14 @@ module.exports = {
     description: "Returns bot information and statistics",
     cooldown: 2,
     aliases: ["botstats", "botinfo"],
-    execute: async (client: CustomClient, interaction: Message | CommandInteraction, prefix: string) => {
+    execute: async (client: CustomClient, interaction: Message | ChatInputCommandInteraction, prefix: string, config: Config) => {
         // Define the variables to be used in the embed
         const guildCount = client.guilds.cache.size;
         const apiPing = Math.round(client.ws.ping);
-        const latency = Math.round(interaction.createdTimestamp - Date.now());
+        const latency = Math.abs(Math.round(Date.now() - interaction.createdTimestamp));
         const memoryUsage = (process.memoryUsage().rss / 1024 / 1024).toFixed(2);
         const userCount = client.guilds.cache.map((g: { memberCount: number; }) => g.memberCount || 0).reduce((x: number, y: number) => x + y, 0);
+        const clientOwner = (await findUser(interaction, client, config.ownerId)).tag
 
         /**
          * A function to create an embed with the bot's statistics that can be modified in future. 
@@ -25,7 +27,7 @@ module.exports = {
             const embed = new EmbedBuilder()
                 .setAuthor({ name: `Bot Statistics`, iconURL: client.user?.avatarURL() || '' })
                 .addFields({ name: 'Prefix', value: `\`${prefix}\`` },
-                    // { name: 'Client Owner', value: `\`${(await findUser(message, client, config.ownerId)).tag}\``, inline: true },
+                    { name: 'Client Owner', value: `\`${clientOwner}\``, inline: true },
                     { name: 'Guild Count', value: `\`${guildCount}\``, inline: true },
                     { name: 'User Count', value: `\`${userCount}\``, inline: true },
                     { name: 'API Ping', value: `\`${apiPing}ms\``, inline: true },

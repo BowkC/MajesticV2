@@ -1,16 +1,18 @@
 import {
     ApplicationCommand,
+    ChatInputCommandInteraction,
     Collection,
     CommandInteraction,
     Message,
+    PermissionResolvable,
     SlashCommandBuilder,
 } from 'discord.js';
 
 import { buildSlashCommand, findSlashChanges, validateCommandStructure } from '../helpers/command';
-import { OptionBuilderMapping } from '../helpers/command';
+import { OptionBuilderMapping, OptionObject } from '../helpers/command';
 import { promises as fsPromises } from 'fs';
 import { CustomClient } from '../index';
-import { getConfig } from '../config';
+import { Config, getConfig } from '../config';
 import path from 'path';
 
 // Use the fsPromises object to access the async file system functions.
@@ -21,13 +23,16 @@ const { readdir, lstat } = fsPromises;
 export interface Command {
     name: string;
     usage: string;
+    category: string;
     description: string;
     cooldown?: number;
     aliases?: string[];
-    options?: Array<{ [optionType: keyof OptionBuilderMapping]: { name: string; description: string; required?: boolean } }>;
+    botPermissions?: PermissionResolvable[];
+    memberPermissions?: PermissionResolvable[];
+    options?: Array<{ [optionType: keyof OptionBuilderMapping]: OptionObject }>;
     textExtract?: (messageInteraction: Message) => object;
     slashExtract?: (commandInteraction: CommandInteraction) => object;
-    execute: (clientInstance: CustomClient, interactionObject: Message | CommandInteraction, commandPrefix: string, config?: object, optionData?: object) => void;
+    execute: (clientInstance: CustomClient, interactionObject: Message | ChatInputCommandInteraction, commandPrefix: string, config?: Config, optionData?: object) => void;
 }
 
 /**
@@ -62,6 +67,13 @@ export default async function loadCommands(clientInstance: CustomClient) {
                 const fileProcessing = commandFiles.map(async (commandFileName) => {
                     try {
                         const { default: commandDefinition } = await import(`${commandDirectoryPath}/${commandFileName}`);
+
+                        // Build commands with a category that's inferred, ensure lowercase elsewhere
+                        commandDefinition.name = commandDefinition.name.toLowerCase();
+                        commandDefinition.aliases = commandDefinition.aliases?.map((alias: String) => alias.toLowerCase());
+                        commandDefinition.category = categoryName.toLowerCase();
+
+                        // Validate the command structure before adding it to the client.
                         if (!validateCommandStructure(commandDefinition)) {
                             console.warn(`[CommandLoader] Invalid command structure in file: ${commandFileName}`);
                             return;
@@ -83,10 +95,8 @@ export default async function loadCommands(clientInstance: CustomClient) {
                 await Promise.all(fileProcessing);
 
                 if (categoryCommands.length > 0) {
-                    for (const commandDefinition of categoryCommands) {
-                        const slashCommand = buildSlashCommand(commandDefinition, categoryName);
-                        slashCommandsMap.set(commandDefinition.name.toLowerCase(), slashCommand);
-                    }
+                    const slashCommand = buildSlashCommand(categoryCommands, categoryName);
+                    slashCommandsMap.set(categoryName.toLowerCase(), slashCommand);
                 }
             }
         });
@@ -268,8 +278,8 @@ export default async function loadCommands(clientInstance: CustomClient) {
             }
         });
 
-        console.log(`[CommandLoader] Successfully loaded ${clientInstance.commands.size} text commands.`);
+        console.log(`[CommandLoader] Successfully loaded ${clientInstance.commands.size} commands.`);
     } catch (error) {
-        console.error(`[CommandLoader] Error loading commands: ${error}`);
+        console.error(`[CommandLoader] Error loading commands: ${(error as Error).stack}`);
     }
 }

@@ -1,4 +1,4 @@
-import { CommandInteraction, CommandInteractionOptionResolver, Message } from "discord.js";
+import { ApplicationCommand, CommandInteraction, CommandInteractionOptionResolver, Message } from "discord.js";
 import { errorEmbed, logError, escapeString } from "../../helpers/functions";
 import { CustomClient } from "../../index";
 import { getConfig } from "../../config";
@@ -8,7 +8,8 @@ import { Command } from "../../handlers/command";
 module.exports = async (client: CustomClient, interaction: Message | CommandInteraction) => {
     // If the interaction is not in a guild, return
     if (!interaction.guild || client.user === null) return;
-
+    if(!(interaction instanceof Message) && !interaction.isChatInputCommand()) return;
+    
     const config = getConfig();
     const guildData = await getCache(interaction.guild.id, config.db)
 
