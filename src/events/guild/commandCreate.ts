@@ -52,11 +52,11 @@ module.exports = async (client: CustomClient, interaction: Message | CommandInte
         // Below helpers allow unique data extraction slash and text command specific
         if (interaction instanceof CommandInteraction && command.hasOwnProperty("slashExtract")) {
             if (typeof command.slashExtract === "function") {
-                optionData = command.slashExtract(interaction);
+                optionData = command.slashExtract(interaction, client);
             }
         } else if (command.hasOwnProperty("textExtract")) {
             if (typeof command.textExtract === "function") {
-                optionData = command.textExtract(interaction as Message);
+                optionData = command.textExtract(interaction as Message, client);
             }
         }
 

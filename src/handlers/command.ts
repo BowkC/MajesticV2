@@ -30,8 +30,8 @@ export interface Command {
     botPermissions?: PermissionResolvable[];
     memberPermissions?: PermissionResolvable[];
     options?: Array<{ [optionType: keyof OptionBuilderMapping]: OptionObject }>;
-    textExtract?: (messageInteraction: Message) => object;
-    slashExtract?: (commandInteraction: CommandInteraction) => object;
+    textExtract?: (messageInteraction: Message, client?: CustomClient) => object;
+    slashExtract?: (commandInteraction: CommandInteraction, client?: CustomClient) => object;
     execute: (clientInstance: CustomClient, interactionObject: Message | ChatInputCommandInteraction, commandPrefix: string, config?: Config, optionData?: object) => void;
 }
 

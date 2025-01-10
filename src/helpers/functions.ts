@@ -342,3 +342,28 @@ export async function handlePagination(
         }).catch(console.error);
     });
 }
+
+export function findCategory(category: string | null): any {
+    if (category === null) return null;
+    const config = getConfig();
+    const categoryName = category.toLowerCase();
+
+    // Attempt to find the category by name or alias
+    const selectedCategory = config.categoryDefinitions.find(category =>
+        category.name.toLowerCase() === categoryName ||
+        (category.aliases && category.aliases.some(alias => alias.toLowerCase() === categoryName))
+    );
+    return selectedCategory;
+}
+
+export function findCommand(command: string | null, client: CustomClient): any {
+    if (command === null) return null;
+    const commandName = command.toLowerCase();
+
+    // Attempt to find the command by name or alias
+    const selectedCommand = client.commands.find(cmd =>
+        cmd.name.toLowerCase() === commandName ||
+        (cmd.aliases && cmd.aliases.some(alias => alias.toLowerCase() === commandName))
+    );
+    return selectedCommand;
+}

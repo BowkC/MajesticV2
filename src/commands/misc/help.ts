@@ -9,7 +9,9 @@ import {
     handlePagination,
     generateBotInvite,
     interactionUser,
-    errorEmbed
+    errorEmbed,
+    findCategory,
+    findCommand
 } from '../../helpers/functions';
 import { CustomClient } from '../../index';
 import { Config } from '../../config';
@@ -36,23 +38,25 @@ module.exports = {
             }
         }
     ],
-    textExtract: (messageInteraction: Message) => {
+    textExtract: (messageInteraction: Message, client: CustomClient) => {
         const data = messageInteraction.content.split(" ").slice(1)[0];
         return {
-            commandName: data || null,
-            categoryName: data || null,
+            selectedCommand: findCommand(data, client),
+            selectedCategory: findCategory(data),
         }
     },
-    slashExtract: (commandInteraction: ChatInputCommandInteraction) => {
+    slashExtract: (commandInteraction: ChatInputCommandInteraction, client: CustomClient) => {
+        const commandName = findCommand(commandInteraction.options.getString('command'), client);
+        const categoryName = findCategory(commandInteraction.options.getString('category'));
         return {
-            commandName: commandInteraction.options.getString('command'),
-            categoryName: commandInteraction.options.getString('category'),
+            selectedCommand: commandName,
+            selectedCategory: categoryName,
         }
     },
     execute: async (client: CustomClient, interaction: Message | ChatInputCommandInteraction, prefix: string, config: Config,
         optionData: {
-            commandName: string | null,
-            categoryName: string | null
+            selectedCommand: any | null,
+            selectedCategory: any | null
         }) => {
 
         const ourUser = interactionUser(interaction);
@@ -105,27 +109,8 @@ module.exports = {
         });
 
         // Check if a category or command is specified
-        let selectedCategory = null;
-        let selectedCommand = null;
-
-        if (optionData.categoryName) {
-            const categoryName = optionData.categoryName.toLowerCase();
-
-            // Attempt to find the category by name or alias
-            selectedCategory = config.categoryDefinitions.find(category =>
-                category.name.toLowerCase() === categoryName ||
-                (category.aliases && category.aliases.some(alias => alias.toLowerCase() === categoryName))
-            );
-        }
-        if (optionData.commandName) {
-            const commandName = optionData.commandName.toLowerCase();
-
-            // Attempt to find the command by name or alias
-            selectedCommand = client.commands.find(cmd =>
-                cmd.name.toLowerCase() === commandName ||
-                (cmd.aliases && cmd.aliases.some(alias => alias.toLowerCase() === commandName))
-            );
-        }
+        const selectedCategory = optionData.selectedCategory;
+        const selectedCommand = optionData.selectedCommand;
 
         if (selectedCategory && !selectedCategory.hidden) {
             // Filter the embeds to start with the selected category
@@ -143,12 +128,20 @@ module.exports = {
                 await handlePagination(interaction, ourUser.id, pages);
             } else {
                 await interaction.reply({
-                    embeds: [errorEmbed(`The category "${optionData.categoryName}" does not exist or is hidden.`, prefix)],
+                    embeds: [errorEmbed(`The category "${selectedCategory.name}" does not exist or is hidden.`, prefix)],
                     ephemeral: true
                 });
             }
+        } else if (selectedCategory && selectedCategory.hidden) {
+            await interaction.reply({
+                embeds: [errorEmbed(`The category "${selectedCategory.name}" does not exist or is hidden.`, prefix)],
+                ephemeral: true
+            });
         } else if (selectedCommand) {
             // Display detailed help for the specific command
+            const aliases = selectedCommand.aliases?.map((alias: any) => `\`${prefix}${alias}\``).join(", ") || "None";
+            const cooldown = `${selectedCommand.cooldown ? `${selectedCommand.cooldown} second${selectedCommand.cooldown > 1 ? "s" : ""}` : "1 second"}`;
+
             const commandHelpEmbed = new EmbedBuilder()
                 .setAuthor({
                     name: `Command Help - ${selectedCommand.name.charAt(0).toUpperCase() + selectedCommand.name.slice(1)}`,
@@ -160,12 +153,12 @@ module.exports = {
                     { name: "Description", value: selectedCommand.description || "No description provided.", inline: false },
                     {
                         name: "Aliases",
-                        value: selectedCommand.aliases?.map(alias => `\`${prefix}${alias}\``).join(", ") || "None",
+                        value: aliases,
                         inline: true
                     },
                     {
                         name: "Cooldown",
-                        value: `${selectedCommand.cooldown ? `${selectedCommand.cooldown} second${selectedCommand.cooldown > 1 ? "s" : ""}` : "1 second"}`,
+                        value: cooldown,
                         inline: true
                     },
                     {
