@@ -37,7 +37,6 @@ module.exports = {
         }
     ],
     textExtract: (messageInteraction: Message) => {
-        // Command or Category, Nothing
         const data = messageInteraction.content.split(" ").slice(1)[0];
         return {
             commandName: data || null,
@@ -45,7 +44,6 @@ module.exports = {
         }
     },
     slashExtract: (commandInteraction: ChatInputCommandInteraction) => {
-        // Command or Category, Nothing
         return {
             commandName: commandInteraction.options.getString('command'),
             categoryName: commandInteraction.options.getString('category'),
@@ -57,8 +55,6 @@ module.exports = {
             categoryName: string | null
         }) => {
 
-
-        // each category has a thumbnail, name aliases, hidden/not hidden
         const ourUser = interactionUser(interaction);
         const commands = (category: String) => {
             return client.commands.filter((command) => command.category === category).map((command) => `${prefix}${command.name}`);
