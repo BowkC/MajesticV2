@@ -8,8 +8,8 @@ import { Command } from "../../handlers/command";
 module.exports = async (client: CustomClient, interaction: Message | CommandInteraction) => {
     // If the interaction is not in a guild, return
     if (!interaction.guild || client.user === null) return;
-    if(!(interaction instanceof Message) && !interaction.isChatInputCommand()) return;
-    
+    if (!(interaction instanceof Message) && !interaction.isChatInputCommand()) return;
+
     const config = getConfig();
     const guildData = await getCache(interaction.guild.id, config.db)
 
@@ -42,8 +42,8 @@ module.exports = async (client: CustomClient, interaction: Message | CommandInte
 
     // Return if command cannot be found or if the message does not start with the prefix
     const prefixRegex = new RegExp(`^(<@!?${client.user.id}>|${escapeString(prefix)})`);
-    if (!command || !prefixRegex.test(prefix)) return;
-
+    if (!command || ((interaction instanceof Message) ? !prefixRegex.test(givenPrefix) : false)) return;
+    
     // Execute the command, use data extracting helpers to get the data 
     // from the interaction as a commonly shared object
     try {

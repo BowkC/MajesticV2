@@ -8,7 +8,7 @@ import {
     ButtonBuilder,
     ButtonStyle,
     ComponentType,
-    InteractionReplyOptions
+    ChatInputCommandInteraction
 } from 'discord.js';
 
 /**
@@ -367,3 +367,14 @@ export function findCommand(command: string | null, client: CustomClient): any {
     );
     return selectedCommand;
 }
+
+export function getPostPrefix(client: CustomClient, interaction : ChatInputCommandInteraction | Message, name: string): string {
+    const commandsCategory = client.commands.find(cmd => cmd.name === name)?.category;
+    return (interaction instanceof ChatInputCommandInteraction) ? commandsCategory + ' ' : '';
+}
+
+export function findAliases(command: any, interaction: Message | ChatInputCommandInteraction, prefix: string): string {
+    return interaction instanceof ChatInputCommandInteraction 
+        ? "None for slash commands"
+        : command.aliases?.map((alias: any) => `\`${prefix}${alias}\``).join(", ") || "None";
+};

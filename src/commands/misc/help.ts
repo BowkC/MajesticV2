@@ -11,7 +11,9 @@ import {
     interactionUser,
     errorEmbed,
     findCategory,
-    findCommand
+    findCommand,
+    getPostPrefix,
+    findAliases
 } from '../../helpers/functions';
 import { CustomClient } from '../../index';
 import { Config } from '../../config';
@@ -60,8 +62,17 @@ module.exports = {
         }) => {
 
         const ourUser = interactionUser(interaction);
+        const emotes: [string, string, string, string] = [
+            '<:leftskip:871470010114121768>',
+            '<:leftarrow:871469909224329276>',
+            '<:rightarrow:871469964559777802>',
+            '<:rightskip:871470044259975229>'
+        ];
         const commands = (category: String) => {
-            return client.commands.filter((command) => command.category === category).map((command) => `${prefix}${command.name}`);
+            return client.commands.filter((command) => command.category === category).map((command) => {
+                const commandPostPrefix = getPostPrefix(client, interaction, command.name);
+                return `${prefix}${commandPostPrefix}${command.name}`
+            });
         }
 
         // Define the fields present on all embeds.
@@ -82,7 +93,7 @@ module.exports = {
         // Dynamically generate the description for the help embed
         const categoryDescriptions = config.categoryDefinitions
             .filter(category => !category.hidden)
-            .map(category => `\`${prefix}help ${category.name.toLowerCase()}\` - **${category.name}** commands`)
+            .map(category => `\`${prefix}${getPostPrefix(client, interaction, "help")}help ${category.name.toLowerCase()}\` - **${category.name}** commands`)
             .join('\n');
 
         const helpEmbed = new EmbedBuilder()
@@ -125,7 +136,7 @@ module.exports = {
                     ...embedDefinitions.slice(targetEmbedIndex + 1).map(def => def.embed),
                     ...embedDefinitions.slice(0, targetEmbedIndex).map(def => def.embed)
                 ];
-                await handlePagination(interaction, ourUser.id, pages);
+                await handlePagination(interaction, ourUser.id, pages, emotes);
             } else {
                 await interaction.reply({
                     embeds: [errorEmbed(`The category "${selectedCategory.name}" does not exist or is hidden.`, prefix)],
@@ -139,8 +150,10 @@ module.exports = {
             });
         } else if (selectedCommand) {
             // Display detailed help for the specific command
-            const aliases = selectedCommand.aliases?.map((alias: any) => `\`${prefix}${alias}\``).join(", ") || "None";
+
             const cooldown = `${selectedCommand.cooldown ? `${selectedCommand.cooldown} second${selectedCommand.cooldown > 1 ? "s" : ""}` : "1 second"}`;
+            const commandPostPrefix = getPostPrefix(client, interaction, selectedCommand.name);
+            const aliases = findAliases(selectedCommand, interaction, prefix);
 
             const commandHelpEmbed = new EmbedBuilder()
                 .setAuthor({
@@ -149,7 +162,7 @@ module.exports = {
                 })
                 .addFields(
                     { name: "Category", value: `\`${selectedCommand.category || "Miscellaneous"}\``, inline: true },
-                    { name: "Usage", value: `\`${prefix}${selectedCommand.usage || selectedCommand.name}\``, inline: true },
+                    { name: "Usage", value: `\`${prefix}${commandPostPrefix}${selectedCommand.usage || selectedCommand.name}\``, inline: true },
                     { name: "Description", value: selectedCommand.description || "No description provided.", inline: false },
                     {
                         name: "Aliases",
@@ -181,7 +194,7 @@ module.exports = {
             // Fallback to the main help embed if no valid category or command is provided
             const ourEmbeds = embedDefinitions.map(object => object.embed);
             ourEmbeds.unshift(helpEmbed);
-            await handlePagination(interaction, ourUser.id, ourEmbeds);
+            await handlePagination(interaction, ourUser.id, ourEmbeds, emotes);
         }
     }
 }
